@@ -32,27 +32,55 @@ $("#teamButton").click(function()
 });
 var elt = document.getElementById('calculator');
 var calculator = Desmos.GraphingCalculator(elt, {expressions: false});
-var start = 1;
+var globalStream;
+var video;
+var canvas = document.querySelector("#canvas");
 $("#startCameraButton").on("click", function(){
-    if(start==1)
+    if(!document.getElementById("liveVideo"))
     {
-        $("#recognitionPanelEquation").text("-");
-        $.getJSON('/setStart');
+        $("#canvas").css("display", "none");
+        video = document.createElement('video');
+        video.setAttribute('playsinline', '');
+        video.setAttribute('autoplay', '');
+        video.setAttribute('muted', '');
+        video.setAttribute('id', 'liveVideo');
+        video.style.width = '100%';
+        video.style.height = '100%';
+        var facingMode = "user";
+        var constraints = {audio: false,video: {facingMode: facingMode}};
+        navigator.mediaDevices.getUserMedia(constraints).then(function success(stream){
+            video.srcObject = stream;
+            globalStream = stream;
+        });
         $(".camera-container").css("display", "none");
-        $("#liveVideo").css("display", "block");
+        var mainContentData = document.getElementsByClassName("main-content-data")[0];
+        mainContentData.appendChild(video);
         $("#startCameraButton").text("Capture the image and recognise the equation");
         $("#startCameraButton").addClass('active');
-        start = 2;
     }
     else
     {
-        $.getJSON('/stopStart', function(data){
-            console.log(data);
-            $("#recognitionPanelEquation").text(data["result"]);
-            calculator.setExpression({ id: 'graph1', latex: data["result"], color: Desmos.Colors.ORANGE });
+        canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+        var image_data_url = canvas.toDataURL('image/jpeg');
+        globalStream.getTracks().forEach(function(track){
+            if (track.readyState == 'live'){
+                track.stop();
+            }
         });
         $("#startCameraButton").removeClass('active');
         $("#startCameraButton").text("Start Camera and Recognise the Equation");
-        start = 1;
+        $.ajax({
+            type: "POST",
+            contentType: "application/json; charset=utf-8",
+            url: "/recognise",
+            data: JSON.stringify({imageData: image_data_url}),
+            success: function(data){
+                    $("#recognitionPanelEquation").text(data["result"]);
+                    calculator.setExpression({ id: 'graph1', latex: data["result"], color: Desmos.Colors.ORANGE });
+            },
+            dataType: "json"
+        });
+        document.getElementById("liveVideo").parentNode.removeChild(document.getElementById("liveVideo"));
+        $("#canvas").css("display", "block");
     }
 });
